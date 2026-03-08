@@ -18,11 +18,14 @@ fn main() {
         panic!("Failed to create raw socket (run with sudo)");
     }
 
-    let icmp_packet: [u8; 8] = [
+    let mut icmp_packet: [u8; 8] = [
         8, 0, 0, 0,
         0, 1,
         0, 1
     ];
+    let checksum = calculate_checksum(&icmp_packet);
+    icmp_packet[2] = (checksum >> 8) as u8;
+    icmp_packet[3] = (checksum & 0xFF) as u8;
 
     let dest = sockaddr_in {
         sin_family: AF_INET as u16,
@@ -79,4 +82,16 @@ fn main() {
     } else {
         println!("No reply received");
     }
+}
+
+fn calculate_checksum(buf: &[u8]) -> u16 {
+    let mut sum = 0u32;
+    for i in (0..buf.len()).step_by(2) {
+        let word = u16::from_be_bytes([buf[i], buf[i + 1]]);
+        sum += word as u32;
+    }
+    while (sum >> 16) > 0 {
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+    !sum as u16
 }
