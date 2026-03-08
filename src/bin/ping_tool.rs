@@ -39,10 +39,10 @@ fn main() {
         sendto(
             sock,
             icmp_packet.as_ptr() as *const _,
-            icmp_packet.len() as i32,
+            icmp_packet.len(),
             0,
             &dest as *const _ as *const _,
-            std::mem::size_of::<sockaddr_in>() as i32,
+            std::mem::size_of::<sockaddr_in>() as u32,
         )
     };
 
@@ -59,10 +59,10 @@ fn main() {
         recvfrom(
             sock,
             buf.as_mut_ptr() as *mut _,
-            buf.len() as i32,
+            buf.len(),
             0,
             &mut src_addr as *mut _ as *mut _,
-            &mut addr_len as *mut u32 as *mut _,
+            &mut addr_len as *mut _,
         )
     };
 
