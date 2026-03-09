@@ -34,12 +34,21 @@ fn main() {
 
     println!("PING {}", target_ip);
 
+    let session_start = Instant::now();
+
     let mut total_packets_transmitted: u8 = 0;
     let mut total_packets_received: u8 = 0;
 
     let mut rtts: Vec<Duration> = Vec::new();
 
-    let session_start = Instant::now();
+    let dest = sockaddr_in {
+            sin_family: AF_INET as u16,
+            sin_port: 0,
+            sin_addr: in_addr {
+                s_addr: u32::from(target_ip).to_be(),
+            },
+            sin_zero: [0; 8],
+        };
 
     for sequence_id in 1..=3 {
         let mut icmp_packet: [u8; 8] = [
@@ -50,15 +59,6 @@ fn main() {
         let checksum = calculate_checksum(&icmp_packet);
         icmp_packet[2] = (checksum >> 8) as u8;
         icmp_packet[3] = (checksum & 0xFF) as u8;
-
-        let dest = sockaddr_in {
-            sin_family: AF_INET as u16,
-            sin_port: 0,
-            sin_addr: in_addr {
-                s_addr: u32::from(target_ip).to_be(),
-            },
-            sin_zero: [0; 8],
-        };
 
         let request_start = Instant::now();
 
@@ -103,7 +103,7 @@ fn main() {
 
             let recv_type: u8 = buf[20];
             let recv_id = u16::from_be_bytes([buf[24], buf[25]]);
-            let ttl = u8::from_be_bytes([buf[8]]);
+            let ttl: u8 = buf[8];
 
             if recv_id == ICMP_ID as u16 && recv_type == ICMP_ECHO_REPLY {
                 let elapsed = request_start.elapsed();
