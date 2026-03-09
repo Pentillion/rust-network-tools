@@ -1,6 +1,6 @@
-use std::env;
+use std::{env};
 use std::net::Ipv4Addr;
-use std::time::Instant;
+use std::time::{Instant};
 use libc::{socket, AF_INET, SOCK_RAW, IPPROTO_ICMP, sockaddr_in, in_addr, sendto, recvfrom};
 
 fn main() {
@@ -18,9 +18,21 @@ fn main() {
         panic!("Failed to create raw socket (run with sudo)");
     }
 
+    let timeout = libc::timeval { tv_sec: 1, tv_usec: 0 };
+    unsafe {
+        libc::setsockopt(
+            sock, 
+            libc::SOL_SOCKET, 
+            libc::SO_RCVTIMEO, 
+            &timeout as *const _ as *const _, 
+            std::mem::size_of::<libc::timeval>() as u32
+        );
+    }
+
+    const ICMP_ID: u8 = 1;
     let mut icmp_packet: [u8; 8] = [
         8, 0, 0, 0,
-        0, 1,
+        0, ICMP_ID,
         0, 1
     ];
     let checksum = calculate_checksum(&icmp_packet);
@@ -58,30 +70,33 @@ fn main() {
     let mut src_addr: sockaddr_in = unsafe { std::mem::zeroed() };
     let mut addr_len = std::mem::size_of::<sockaddr_in>() as u32;
 
-    let recv_len = unsafe {
-        recvfrom(
-            sock,
-            buf.as_mut_ptr() as *mut _,
-            buf.len(),
-            0,
-            &mut src_addr as *mut _ as *mut _,
-            &mut addr_len as *mut _,
-        )
-    };
+    loop {
+        let recv_len = unsafe {
+            recvfrom(
+                sock,
+                buf.as_mut_ptr() as *mut _,
+                buf.len(),
+                0,
+                &mut src_addr as *mut _ as *mut _,
+                &mut addr_len as *mut _,
+            )
+        };
 
-    if recv_len > 0 {
-        let elapsed = start.elapsed();
+        if recv_len < 0 {
+            println!("Request timed out.");
+            break;
+        }
 
-        let reply_ip =
-            Ipv4Addr::from(u32::from_be(src_addr.sin_addr.s_addr));
+        let recv_id = u16::from_be_bytes([buf[24], buf[25]]);
+        let ttl = u8::from_be_bytes([buf[8]]);
 
-        println!(
-            "Received {} bytes from {} in {:?}",
-            recv_len, reply_ip, elapsed
-        );
-    } else {
-        println!("No reply received");
-    }
+        if recv_id == ICMP_ID as u16 {
+            let elapsed = start.elapsed();
+            let reply_ip = Ipv4Addr::from(u32::from_be(src_addr.sin_addr.s_addr));
+            println!("Received {} bytes from {} in {:?} with ttl {}", recv_len, reply_ip, elapsed, ttl);
+            break;
+        }
+    }       
 }
 
 fn calculate_checksum(buf: &[u8]) -> u16 {
