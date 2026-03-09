@@ -7,18 +7,18 @@ const ICMP_ECHO_REQUEST: u8 = 8;
 const ICMP_ECHO_REPLY: u8 = 0;
 const ICMP_ID: u8 = 1;
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
         eprintln!("Usage: ping_tool <target-ip>");
-        return;
+        return Ok(());
     }
 
-    let target_ip: Ipv4Addr = args[1].parse().expect("Invalid IP address");
+    let target_ip: Ipv4Addr = args[1].parse()?;
 
     let sock = unsafe { socket(AF_INET, SOCK_RAW, IPPROTO_ICMP) };
     if sock < 0 {
-        panic!("Failed to create raw socket (run with sudo)");
+        return Err("Failed to create raw socket (run with sudo)".into());
     }
 
     let timeout = libc::timeval { tv_sec: 1, tv_usec: 0 };
@@ -32,33 +32,27 @@ fn main() {
         );
     }
 
+    let dest = sockaddr_in {
+        sin_family: AF_INET as u16,
+        sin_port: 0,
+        sin_addr: in_addr {
+            s_addr: u32::from(target_ip).to_be(),
+        },
+        sin_zero: [0; 8],
+    };
+
     println!("PING {}", target_ip);
 
     let session_start = Instant::now();
+    let mut rtts: Vec<Duration> = Vec::new();
 
     let mut total_packets_transmitted: u8 = 0;
     let mut total_packets_received: u8 = 0;
 
-    let mut rtts: Vec<Duration> = Vec::new();
-
-    let dest = sockaddr_in {
-            sin_family: AF_INET as u16,
-            sin_port: 0,
-            sin_addr: in_addr {
-                s_addr: u32::from(target_ip).to_be(),
-            },
-            sin_zero: [0; 8],
-        };
-
     for sequence_id in 1..=3 {
-        let mut icmp_packet: [u8; 8] = [
-            ICMP_ECHO_REQUEST, 0, 0, 0,
-            0, ICMP_ID,
-            0, sequence_id
-        ];
+        let mut icmp_packet: [u8; 8] = [ICMP_ECHO_REQUEST, 0, 0, 0, 0, ICMP_ID, 0, sequence_id];
         let checksum = calculate_checksum(&icmp_packet);
-        icmp_packet[2] = (checksum >> 8) as u8;
-        icmp_packet[3] = (checksum & 0xFF) as u8;
+        icmp_packet[2..4].copy_from_slice(&checksum.to_be_bytes());
 
         let request_start = Instant::now();
 
@@ -74,7 +68,7 @@ fn main() {
         };
 
         if send_result < 0 {
-            panic!("sendto failed");
+            return Err("sendto failed".into());
         }
 
         total_packets_transmitted += 1;
@@ -139,6 +133,8 @@ fn main() {
             max.as_secs_f64() * 1000.0
         );
     }
+
+    return Ok(());
 }
 
 fn calculate_checksum(buf: &[u8]) -> u16 {
