@@ -2,6 +2,11 @@ use std::net::Ipv4Addr;
 
 use libc::{socket, AF_INET, SOCK_RAW, IPPROTO_ICMP, sockaddr_in, in_addr, sendto};
 
+pub const ICMP_ECHO_REQUEST: u8 = 8;
+pub const ICMP_ECHO_REPLY: u8 = 0;
+pub const ICMP_TIME_EXCEEDED: u8 = 11;
+pub const ICMP_ID: u8 = 1;
+
 pub fn create_socket() -> Result<i32, Box<dyn std::error::Error>> {
     let sock = unsafe { socket(AF_INET, SOCK_RAW, IPPROTO_ICMP) };
     if sock < 0 {
@@ -19,6 +24,23 @@ pub fn create_socket() -> Result<i32, Box<dyn std::error::Error>> {
         );
     };
     Ok(sock)
+}
+
+pub fn set_ttl(sock: i32, ttl: u8) -> Result<(), Box<dyn std::error::Error>> {
+    let ttl_val: libc::c_int = ttl as libc::c_int;
+    let res = unsafe {
+        libc::setsockopt(
+            sock, 
+            libc::IPPROTO_IP, 
+            libc::IP_TTL, 
+            &ttl_val as *const _ as *const _, 
+            std::mem::size_of::<libc::c_int>() as u32
+        )
+    };
+    if res < 0 {
+        return Err("Failed to set TTL".into());
+    }
+    Ok(())
 }
 
 pub fn create_dest(target_ip: Ipv4Addr) -> sockaddr_in {
