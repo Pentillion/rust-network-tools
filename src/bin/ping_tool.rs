@@ -1,7 +1,8 @@
 use std::{env, thread};
 use std::net::Ipv4Addr;
 use std::time::{Duration, Instant};
-use libc::{socket, AF_INET, SOCK_RAW, IPPROTO_ICMP, sockaddr_in, in_addr, sendto, recvfrom};
+use libc::{sockaddr_in, recvfrom};
+use rust_network_tools::{calculate_checksum, create_dest, create_socket, send_packet};
 
 const ICMP_ECHO_REQUEST: u8 = 8;
 const ICMP_ECHO_REPLY: u8 = 0;
@@ -16,30 +17,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let target_ip: Ipv4Addr = args[1].parse()?;
 
-    let sock = unsafe { socket(AF_INET, SOCK_RAW, IPPROTO_ICMP) };
-    if sock < 0 {
-        return Err("Failed to create raw socket (run with sudo)".into());
-    }
+    let sock = create_socket()?;
 
-    let timeout = libc::timeval { tv_sec: 1, tv_usec: 0 };
-    unsafe {
-        libc::setsockopt(
-            sock, 
-            libc::SOL_SOCKET, 
-            libc::SO_RCVTIMEO, 
-            &timeout as *const _ as *const _, 
-            std::mem::size_of::<libc::timeval>() as u32
-        );
-    }
-
-    let dest = sockaddr_in {
-        sin_family: AF_INET as u16,
-        sin_port: 0,
-        sin_addr: in_addr {
-            s_addr: u32::from(target_ip).to_be(),
-        },
-        sin_zero: [0; 8],
-    };
+    let dest = create_dest(target_ip);
 
     println!("PING {}", target_ip);
 
@@ -56,20 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let request_start = Instant::now();
 
-        let send_result = unsafe {
-            sendto(
-                sock,
-                icmp_packet.as_ptr() as *const _,
-                icmp_packet.len(),
-                0,
-                &dest as *const _ as *const _,
-                std::mem::size_of::<sockaddr_in>() as u32,
-            )
-        };
-
-        if send_result < 0 {
-            return Err("sendto failed".into());
-        }
+        send_packet(sock, &icmp_packet, &dest)?;
 
         total_packets_transmitted += 1;
 
@@ -135,16 +102,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     return Ok(());
-}
-
-fn calculate_checksum(buf: &[u8]) -> u16 {
-    let mut sum = 0u32;
-    for i in (0..buf.len()).step_by(2) {
-        let word = u16::from_be_bytes([buf[i], buf[i + 1]]);
-        sum += word as u32;
-    }
-    while (sum >> 16) > 0 {
-        sum = (sum & 0xFFFF) + (sum >> 16);
-    }
-    !sum as u16
 }
