@@ -2,11 +2,7 @@ use std::{env, thread};
 use std::net::Ipv4Addr;
 use std::time::{Duration, Instant};
 use libc::{sockaddr_in, recvfrom};
-use rust_network_tools::{calculate_checksum, create_dest, create_socket, send_packet};
-
-const ICMP_ECHO_REQUEST: u8 = 8;
-const ICMP_ECHO_REPLY: u8 = 0;
-const ICMP_ID: u8 = 1;
+use rust_network_tools::{ICMP_ECHO_REPLY, ICMP_ECHO_REQUEST, ICMP_ID, calculate_checksum, create_dest, create_socket, send_packet};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
